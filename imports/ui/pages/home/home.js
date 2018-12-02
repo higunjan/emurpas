@@ -1,58 +1,25 @@
 import './home.html'
 import { FlowRouter } from 'meteor/kadira:flow-router'
-import { ProjectQuestions } from '/imports/api/project-questions/project-questions';
-import { FormProgress } from '/imports/api/form-progress/form-progress'
+import { ProjectQuestions } from '/imports/api/project-questions/project-questions'
 import { UserQuestions } from '/imports/api/userQuestions/userQuestions'
+import { FormProgress } from '/imports/api/form-progress/form-progress'
 
 import moment from 'moment'
 
+let pq = [];
+
 Template.App_home.onCreated(function() {
-  	this.autorun(() => {
+  	pq = [];
+    this.autorun(() => {
     	this.subscribe('projectQuestions')
     	this.subscribe('formProgress')
     	this.subscribe('users')
     	this.subscribe('userInfo')
 
-    	if (Meteor.user() && Meteor.user().moderator){
-      		FlowRouter.go('/moderator/applications')
-    	}
-
-    	let user = Meteor.users.findOne({
-    		_id: Meteor.userId()
-    	})
-
-    	if (user) {
-	    	let pq = ProjectQuestions.find({
-	    		$or: [{
-	            	createdBy: Meteor.userId(),
-	          	}, {
-	            	'team_members.email': ((user.emails || [])[0] || {}).address 
-	          	}]
-	    	}).fetch().map(i => i._id)
-
-	    	let uq = UserQuestions.find({
-	    		createdBy: Meteor.userId()
-	    	}).fetch().map(i => i._id)
-
-	    	let fPq = FormProgress.findOne({
-		        form_type_id: {
-		        	$in: pq
-		        },
-		        status: 'completed'
-		    })
-
-		    let fUq = FormProgress.findOne({
-		        form_type_id: {
-		        	$in: uq
-		        },
-		        status: 'completed'
-		    })
-
-		    if (fPq && !fUq) { // force users to the userinfo page if they haven't completed it yet
-		    	FlowRouter.go('/userInfo')
-		    }
-		}
-  	})
+        if (Meteor.user() && Meteor.user().moderator){
+            FlowRouter.go('/moderator/applications')
+        }
+    })
 })
 
 Template.App_home.helpers({
@@ -60,30 +27,35 @@ Template.App_home.helpers({
 		let user = Meteor.users.findOne({
     		_id: Meteor.userId()
     	})
-
-    	if (user) {
-    		let uq = UserQuestions.findOne({
-    			createdBy: Meteor.userId()
-    		})
-
-    		if (uq) {
+        if (user) {
+            let uq = UserQuestions.findOne({
+                createdBy: Meteor.userId()
+            })
+            
+            if (uq) {
 	    		return _.extend(uq, {
 	          		progress: FormProgress.findOne({
 	            		form_type_id: uq._id
 	          		})
 	          	})
+                console.log(pq, uQuestions, pq && pq.length && (!uQuestions || !uQuestions.progress.status))
+                if(pq && pq.length && (!uQuestions || !uQuestions.progress.status)){
+                    FlowRouter.go('/userInfo');
+                }
+                return uQuestions;
     		}
     	}
+        return false;
 	},
 	updatedAt: function() {
-		return this.updatedAt || this.progress.updated_at
+		return this.updatedAt || (this.progress ? this.progress.updated_at : '')
 	},
     projectquestions: () => {
     	let user = Meteor.users.findOne({
     		_id: Meteor.userId()
     	})
       if(user){
-        return ProjectQuestions.find({
+        let pQuestions = ProjectQuestions.find({
           $or: [{
               createdBy: Meteor.userId(),
           }, {
@@ -98,6 +70,12 @@ Template.App_home.helpers({
             form_type_id: i._id
           })
         }))
+        pQuestions.forEach(function(val){
+            if(val && val.progress && val.progress.status == "completed"){
+                pq.push(val);
+            }
+        })
+        return pQuestions;
       }
       return false
     },
@@ -135,5 +113,4 @@ Template.App_home.helpers({
     formatDate: (timestamp) => {
         return moment(timestamp).format('MMMM Do YYYY, h:mm a')
     }
-
 })
